@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Snack Video Downloader</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, Arial, sans-serif;
+      max-width: 500px;
+      margin: 50px auto;
+      padding: 20px;
+      text-align: center;
+      background: #f9f9f9;
+    }
+    h2 { color: #ff6b35; }
+    input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    button {
+      padding: 12px 24px;
+      background: #ff6b35;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    button:hover { background: #e55a2b; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #result { margin-top: 20px; }
+    .error {
+      color: #d32f2f;
+      background: #ffebee;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+    .thumbnail {
+      max-width: 100%;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    .quality-btn {
+      display: block;
+      width: 100%;
+      margin: 8px 0;
+      padding: 12px;
+      background: white;
+      color: #ff6b35;
+      border: 2px solid #ff6b35;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+    .quality-btn:hover { background: #fff3ee; }
+  </style>
+</head>
+<body>
+  <h2>Snack Video Downloader</h2>
+  <input type="text" id="link" placeholder="Snack Video ka link yahan paste karo" />
+  <button id="downloadBtn" onclick="downloadVideo()">Download</button>
+  <div id="result"></div>
+
+  <script>
+    async function downloadVideo() {
+      const link = document.getElementById('link').value.trim();
+      const resultDiv = document.getElementById('result');
+      const btn = document.getElementById('downloadBtn');
+
+      if (!link) {
+        resultDiv.innerHTML = '<div class="error">Pehle link paste karo</div>';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Load ho raha hai...';
+      resultDiv.innerHTML = '';
+
+      try {
+        const res = await fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ link })
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          resultDiv.innerHTML = `<div class="error">${data.error}</div>`;
+        } else {
+          let html = '';
+          if (data.thumbnail) {
+            html += `<img src="${data.thumbnail}" class="thumbnail" />`;
+          }
+          data.qualities.forEach(q => {
+            html += `<a href="${q.url}" download target="_blank" class="quality-btn">Download (${q.label})</a>`;
+          });
+          resultDiv.innerHTML = html;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<div class="error">Kuch ghalat hua: ${err.message}</div>`;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Download';
+    }
+  </script>
+</body>
+</html>
