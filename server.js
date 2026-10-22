@@ -1,89 +1,68 @@
-const cors = require('cors');
 const axios = require('axios');
 const express = require('express');
-
+const cors = require('cors');
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
 async function getSnackVideoData(videoLink) {
-  // Link check karo
   if (!videoLink || !videoLink.includes('snackvideo.com')) {
     throw new Error('Ye Snack Video ka sahi link nahi hai. Link snackvideo.com se hona chahiye.');
   }
-
   const photoId = videoLink.match(/video\/(\d+)/)?.[1];
   if (!photoId) {
     throw new Error('Link me video ID nahi mili. Sahi link paste karo.');
   }
-
   let html;
   try {
     const response = await axios.get(videoLink, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
-      },
+      headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15' },
       timeout: 10000
     });
     html = response.data;
   } catch (err) {
     throw new Error('Video page load nahi hua. Link check karo ya video private/deleted ho sakta hai.');
   }
-
   const clean = html.replace(/\\"/g, '"');
 
-  // Us photoId ka data block dhoondo (thora bada window rakho taake sab mil jaye)
+  // NAYA tareeqa: page ke VideoObject schema me contentUrl + thumbnailUrl
+  const videoMatch = clean.match(/"contentUrl":"(https:[^"]+?\.mp4[^"]*)"/);
+  if (videoMatch) {
+    const thumbMatch = clean.match(/"thumbnailUrl":\["([^"]+)"/);
+    return {
+      thumbnail: thumbMatch ? thumbMatch[1] : null,
+      qualities: [{ label: 'Download Video', url: videoMatch[1], codec: 'mp4' }]
+    };
+  }
+
+  // PURANA tareeqa (fallback, agar kabhi purana structure wapas aaye)
   const blockRegex = new RegExp(`"photo_id_str":"${photoId}"[\\s\\S]{0,8000}`);
   const blockMatch = clean.match(blockRegex);
-
   if (!blockMatch) {
     throw new Error('Video nahi mila. Ho sakta hai video delete ho gaya ho ya private ho.');
   }
-
   const block = blockMatch[0];
-
-  // Thumbnail nikaalo
-  const thumbMatch = block.match(/"cover_thumbnail_urls":\[\{"cdn":"[^"]+","url":"([^"]+)"/);
-  const thumbnail = thumbMatch ? thumbMatch[1] : null;
-
-  // Multiple quality options nikaalo (HEVC = chota size, AVC = zyada quality)
+  const thumbMatch2 = block.match(/"cover_thumbnail_urls":\[\{"cdn":"[^"]+","url":"([^"]+)"/);
+  const thumbnail = thumbMatch2 ? thumbMatch2[1] : null;
   const qualityRegex = /"url":"([^"]+\.mp4[^"]*)","backupUrl":\[[^\]]*\],"maxBitrate":(\d+),"avgBitrate":(\d+),"videoCodec":"([^"]+)"/g;
   const qualities = [];
   let qMatch;
   while ((qMatch = qualityRegex.exec(block)) !== null) {
-    qualities.push({
-      url: qMatch[1],
-      avgBitrate: parseInt(qMatch[3]),
-      codec: qMatch[4]
-    });
+    qualities.push({ url: qMatch[1], avgBitrate: parseInt(qMatch[3]), codec: qMatch[4] });
   }
-
   if (qualities.length === 0) {
-    // Fallback — agar quality list na mile to default url use karo
     const fallback = block.match(/"main_mv_urls":\[\{"cdn":"[^"]+","url":"([^"]+)"/);
-    if (fallback) {
-      qualities.push({ url: fallback[1], avgBitrate: 0, codec: 'default' });
-    }
+    if (fallback) qualities.push({ url: fallback[1], avgBitrate: 0, codec: 'default' });
+    if (qualities.length === 0) throw new Error('Video URL nahi mila. Ye video download nahi ho sakta.');
   }
-
-  if (qualities.length === 0) {
-    throw new Error('Video URL nahi mila. Ye video download nahi ho sakta.');
-  }
-
-  // Bitrate ke hisaab se sort karo — sabse zyada quality upar
   qualities.sort((a, b) => b.avgBitrate - a.avgBitrate);
-
   const labeledQualities = qualities.map((q, index) => ({
     label: index === 0 ? 'High Quality' : 'Standard Quality',
     url: q.url,
     codec: q.codec
   }));
-
-  return {
-    thumbnail,
-    qualities: labeledQualities
-  };
+  return { thumbnail, qualities: labeledQualities };
 }
 
 app.post('/api/download', async (req, res) => {
@@ -95,6 +74,7 @@ app.post('/api/download', async (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log('Server chal raha hai: http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log('Server chal raha hai: http://localhost:' + PORT);
 });
